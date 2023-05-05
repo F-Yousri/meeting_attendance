@@ -9,7 +9,7 @@ exports.handleAttendance = async (body) => {
 
   try {
     if (type === "room.client.joined") {
-      const inserted = await insertAttendance(pool, meetingId, metadata, receivedAt);
+      await insertAttendance(pool, meetingId, metadata, receivedAt);
       return { message: 'OK' };
     } else if (type === "room.client.left") {
       const attendance = await findAttendance(pool, meetingId, metadata);
