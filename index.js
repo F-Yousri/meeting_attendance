@@ -17,43 +17,59 @@ app.post('/whereby/webhook', async (req, res) => {
   const meetingId = req.body.data.meetingId;
   const userId = req.body.data.metadata;
   const receivedAt = new Date();
-      
-  const connection = await pool.getConnection().catch((err) => {
-    console.error(`Database connection error: ${err.message}`);
-    throw new Error(err);
-  });
 
-  if(event === "room.client.joined") {
-    try {
+  let connection;
+
+  try {
+    connection = await pool.getConnection().catch((err) => {
+      console.error(`Database connection error: ${err.message}`);
+      return Promise.reject(`Database connection error: ${err.message}`);
+    });
+
+    if (event === "room.client.joined") {
       await connection.query(`
         INSERT INTO meeting_attendance (meeting_id, user_id, joined_at)
         VALUES (?, ?, ?)
-      `, [meetingId, userId, receivedAt]);
-  
+      `, [meetingId, userId, receivedAt]).catch((err) => {
+        console.error(`Error executing query: ${err.message}`);
+        return Promise.reject(`Error executing query: ${err.message}`);
+      });
+
       res.send('OK');
-    } finally {
-      connection.release();
-    }
-  } else if (event === "room.client.left") {
-    const [[attendance]] = await connection.query(`
-      SELECT * FROM meeting_attendance
-      WHERE meeting_id = ? AND user_id = ?
-      ORDER BY joined_at DESC
-      LIMIT 1
-    `, [meetingId, userId]);
+    } else if (event === "room.client.left") {
+      const [[attendance]] = await connection.query(`
+        SELECT * FROM meeting_attendance
+        WHERE meeting_id = ? AND user_id = ?
+        ORDER BY joined_at DESC
+        LIMIT 1
+      `, [meetingId, userId]).catch((err) => {
+        console.error(`Error executing query: ${err.message}`);
+        return Promise.reject(`Error executing query: ${err.message}`);
+      });
 
-    const joinedAt = attendance.joined_at;
-    const duration = (receivedAt.getTime() - new Date(joinedAt).getTime()) / 1000;
-
-    try {
+      console.log(attendance)
+      const joinedAt = attendance.joined_at;
+      const duration = (receivedAt.getTime() - new Date(joinedAt).getTime()) / 1000;
+console.log(joinedAt, receivedAt )
       await connection.query(`
         UPDATE meeting_attendance
         SET left_at = ?, duration = ?
         WHERE meeting_id = ? AND user_id = ? AND joined_at = ?
-      `, [receivedAt, duration, meetingId, userId, joinedAt]);
+      `, [receivedAt, duration, meetingId, userId, joinedAt]).catch((err) => {
+        console.error(err);
+        console.error(`Error executing query: ${err.message}`);
+        return Promise.reject(`Error executing query: ${err.message}`);
+      });
 
       res.send('OK');
-    } finally {
+    } else {
+      res.status(400).send('Invalid event type');
+    }
+  } catch (err) {
+    console.error(`Database error: ${err}`);
+    res.status(500).send(`Database error: ${err}`);
+  } finally {
+    if (connection) {
       connection.release();
     }
   }
