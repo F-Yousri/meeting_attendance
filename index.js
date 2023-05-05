@@ -21,12 +21,14 @@ app.post('/whereby/webhook', async (req, res) => {
   let connection;
 
   try {
+    // Get a database connection from the pool
     connection = await pool.getConnection().catch((err) => {
       console.error(`Database connection error: ${err.message}`);
       return Promise.reject(`Database connection error: ${err.message}`);
     });
 
     if (event === "room.client.joined") {
+      // Insert a new attendance record for a user joining a meeting
       await connection.query(`
         INSERT INTO meeting_attendance (meeting_id, user_id, joined_at)
         VALUES (?, ?, ?)
@@ -35,8 +37,10 @@ app.post('/whereby/webhook', async (req, res) => {
         return Promise.reject(`Error executing query: ${err.message}`);
       });
 
+      // Send a success response to the client
       res.send('OK');
     } else if (event === "room.client.left") {
+      // Find the most recent attendance record for a user leaving a meeting
       const [[attendance]] = await connection.query(`
         SELECT * FROM meeting_attendance
         WHERE meeting_id = ? AND user_id = ?
@@ -50,7 +54,8 @@ app.post('/whereby/webhook', async (req, res) => {
       console.log(attendance)
       const joinedAt = attendance.joined_at;
       const duration = (receivedAt.getTime() - new Date(joinedAt).getTime()) / 1000;
-console.log(joinedAt, receivedAt )
+
+      // Update the attendance record with the user's leaving time and duration
       await connection.query(`
         UPDATE meeting_attendance
         SET left_at = ?, duration = ?
@@ -61,14 +66,18 @@ console.log(joinedAt, receivedAt )
         return Promise.reject(`Error executing query: ${err.message}`);
       });
 
+      // Send a success response to the client
       res.send('OK');
     } else {
+      // Send an error response for an invalid event type
       res.status(400).send('Invalid event type');
     }
   } catch (err) {
+    // Handle any errors that occur during database queries
     console.error(`Database error: ${err}`);
     res.status(500).send(`Database error: ${err}`);
   } finally {
+    // Release the database connection back to the pool
     if (connection) {
       connection.release();
     }
