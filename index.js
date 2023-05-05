@@ -1,9 +1,23 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const mysql = require('mysql2/promise');
+const winston = require('winston');
 
 const app = express();
 app.use(bodyParser.json());
+
+// Configure the Winston logger
+const logger = winston.createLogger({
+  level: 'info',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.json()
+  ),
+  transports: [
+    new winston.transports.Console(),
+    new winston.transports.File({ filename: 'app.log' })
+  ]
+});
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
@@ -18,13 +32,22 @@ app.post('/whereby/webhook', async (req, res) => {
   const userId = req.body.data.metadata;
   const receivedAt = new Date();
 
+  const requestData = {
+    method: req.method,
+    path: req.path,
+    query: req.query,
+    headers: req.headers,
+    body: req.body
+  };
+
   let connection;
 
   try {
     // Get a database connection from the pool
     connection = await pool.getConnection().catch((err) => {
-      console.error(`Database connection error: ${err.message}`);
-      return Promise.reject(`Database connection error: ${err.message}`);
+      const errorMessage = `Database connection error: ${err.message}`;
+      logger.error({ error: errorMessage, requestData });
+      return Promise.reject(errorMessage);
     });
 
     if (event === "room.client.joined") {
@@ -33,12 +56,16 @@ app.post('/whereby/webhook', async (req, res) => {
         INSERT INTO meeting_attendance (meeting_id, user_id, joined_at)
         VALUES (?, ?, ?)
       `, [meetingId, userId, receivedAt]).catch((err) => {
-        console.error(`Error executing query: ${err.message}`);
-        return Promise.reject(`Error executing query: ${err.message}`);
+        const errorMessage = `Error executing query: ${err.message}`;
+        logger.error({ error: errorMessage, requestData });
+        return Promise.reject(errorMessage);
       });
 
+      const responseData = { message: 'OK' };
+      logger.info({ requestData, responseData });
+
       // Send a success response to the client
-      res.send('OK');
+      res.send(responseData);
     } else if (event === "room.client.left") {
       // Find the most recent attendance record for a user leaving a meeting
       const [[attendance]] = await connection.query(`
@@ -47,11 +74,13 @@ app.post('/whereby/webhook', async (req, res) => {
         ORDER BY joined_at DESC
         LIMIT 1
       `, [meetingId, userId]).catch((err) => {
-        console.error(`Error executing query: ${err.message}`);
-        return Promise.reject(`Error executing query: ${err.message}`);
+        const errorMessage = `Error executing query: ${err.message}`;
+        logger.error({ error: errorMessage, requestData });
+        return Promise.reject(errorMessage);
       });
 
-      console.log(attendance)
+      logger.info({ attendance, requestData });
+
       const joinedAt = attendance.joined_at;
       const duration = (receivedAt.getTime() - new Date(joinedAt).getTime()) / 1000;
 
@@ -61,21 +90,26 @@ app.post('/whereby/webhook', async (req, res) => {
         SET left_at = ?, duration = ?
         WHERE meeting_id = ? AND user_id = ? AND joined_at = ?
       `, [receivedAt, duration, meetingId, userId, joinedAt]).catch((err) => {
-        console.error(err);
-        console.error(`Error executing query: ${err.message}`);
-        return Promise.reject(`Error executing query: ${err.message}`);
+        const errorMessage = `Error executing query: ${err.message}`;
+        logger.error({ error: errorMessage, requestData });
+        return Promise.reject(errorMessage);
       });
 
+      const responseData = { message: 'OK' };
+      logger.info({ requestData, responseData });
+
       // Send a success response to the client
-      res.send('OK');
+      res.send(responseData);
     } else {
       // Send an error response for an invalid event type
-      res.status(400).send('Invalid event type');
+      const errorMessage = 'Invalid event type';
+      logger.error({ error: errorMessage, requestData });
+      res.status(400).send({ error: errorMessage });
     }
   } catch (err) {
     // Handle any errors that occur during database queries
-    console.error(`Database error: ${err}`);
-    res.status(500).send(`Database error: ${err}`);
+    logger.error({ error: `${err}`, requestData });
+    res.status(500).send({ error: `${err}` });
   } finally {
     // Release the database connection back to the pool
     if (connection) {
@@ -85,5 +119,5 @@ app.post('/whereby/webhook', async (req, res) => {
 });
 
 app.listen(3000, () => {
-  console.log('Server listening on port 3000');
+  logger.info('Server listening on port 3000');
 });
