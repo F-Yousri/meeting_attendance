@@ -2,9 +2,9 @@
   "name": "meeting_attendance",
   "version": "1.0.0",
   "description": "A web application for managing meeting attendance",
-  "main": "index.js",
+  "main": "app.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node app.js"
   },
   "author": "Your Name",
   "license": "MIT",
