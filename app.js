@@ -6,7 +6,11 @@ const { logInfo } = require('./logging');
 
 app.use(bodyParser.json());
 
-app.use('/attendance', attendanceRouter);
+// health check
+app.get('/status', (req, res) => res.status(200).json( { status: "ok" } ))
+// attendance calculations
+app.use('/whereby', attendanceRouter);
+
 
 app.listen(3000, () => {
     logInfo('Server listening on port 3000');
