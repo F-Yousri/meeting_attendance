@@ -1,8 +1,9 @@
 const pool = require('../database/pool');
-const { logError } = require('../logging');
+const { logError, logInfo } = require('../logging');
 const { insertAttendance, findAttendance, updateAttendance } = require('../database/attendance');
 
 exports.handleAttendance = async (body) => {
+  logInfo(body);
   const { type, data } = body;
   const { meetingId, metadata } = data;
   const receivedAt = new Date();
